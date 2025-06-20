@@ -7,15 +7,24 @@
 # The alleles are filtered for ALT read depth ≥ 20.
 
 import pandas as pd
+import argparse
+import os
 
 # ----------------------------
-# Configurable file paths
+# Args
 # ----------------------------
-snp_file = "combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt"  # SNPs per sample, contains genotype calls GT and allele depth AD
-tsv_matrix = "amplicon_coverage_matrix.tsv"  # Amplicon x Sample coverage depth matrix, includes the read depth per sample, per amplicon.
-bed_file = "GRCh38_amplicon_targets_updated_sorted_num.bed"  # BED file with amplicon genomic positions in reference genome
-output_file = "snp_frequencies_filtered_by_coverage_and_altDP20.tsv"
+parser = argparse.ArgumentParser(description="Calculate SNP frequencies filtered by coverage and ALT depth.")
+parser.add_argument("--snp-file", required=True, help="SNP table file (VCF-derived, with genotype info)")
+parser.add_argument("--coverage-matrix", required=True, help="Amplicon coverage matrix (TSV)")
+parser.add_argument("--bed-file", required=True, help="BED file with amplicon coordinates")
+parser.add_argument("--output", required=True, help="Output file path (TSV)")
 
+args = parser.parse_args()
+
+snp_file = args.snp_file
+tsv_matrix = args.coverage_matrix
+bed_file = args.bed_file
+output_file = args.output
 
 # ----------------------------
 # Step 1: Load input data

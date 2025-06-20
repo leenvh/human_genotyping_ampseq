@@ -16,6 +16,8 @@ EXAMPLE USAGE:
     --ref GCF_000001405.40_GRCh38.p14_genomic.fna \
     --gff GCF_000001405.40_GRCh38.p14_genomic.gff \
     --bed GRCh38_amplicon_targets_updated_sorted.bed \
+    --clinvar clinvar_GRCh38.vcf.gz \
+    --output-dir path/to/outputdir \
     --min-base-qual 30 \
     --threads 40
 
@@ -56,6 +58,8 @@ def log(msg):
 
 # ___ MAIN FUNCTION ___
 def main(args):
+    # Ensure output directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
     # Read sample IDs from CSV index file
     samples = []
     reader = csv.DictReader(open(args.index_file))
@@ -119,7 +123,7 @@ def main(args):
     log(f"Finished filtering for FMT/DP>30")
 
     # SNP ANNOTATION + EXPORT
-    run_cmd("bcftools view --threads %(threads)s -v snps combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o snps.vcf.gz" % vars(args))
+    run_cmd("bcftools view --threads %(threads)s -v snps combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o %(output_dir)s/snps.vcf.gz" % vars(args))
 
     run_cmd("tabix -f snps.vcf.gz" % vars(args))
 
@@ -137,16 +141,14 @@ def main(args):
 
     run_cmd("bcftools index -f snps_num.vcf.gz")
 
-    run_cmd("SnpSift annotate %(clinVar)s snps_num.vcf.gz > snps.vcf.gz" % vars(args))
-
-    run_cmd("bcftools query snps.vcf.gz -f '[%SAMPLE\t%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%GT\t%TGT\t%DP\t%AD\t%INFO/BCSQ\t%RS\t%CLNDN\n]' > combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt")
-
-    run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt")
+    run_cmd("SnpSift annotate %(clinVar)s %(output_dir)s/snps_num.vcf.gz > %(output_dir)s/snps.vcf.gz" % vars(args))
+    run_cmd("bcftools query %(output_dir)s/snps.vcf.gz -f '[%SAMPLE\t%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%GT\t%TGT\t%DP\t%AD\t%INFO/BCSQ\t%RS\t%CLNDN\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
+    run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
     
     run_cmd("awk -F'\t' 'BEGIN{OFS=FS} $2==\"4\" && $3==\"143781321\" && $4==\"A\" && $5==\"G\" {$12=\"186873296\"} {print}' combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt")
 
     # INDEL ANNOTATION + EXPORT
-    run_cmd("bcftools view --threads %(threads)s -v indels combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o indels.vcf.gz" % vars(args))
+    run_cmd("bcftools view --threads %(threads)s -v indels combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o %(output_dir)s/indels.vcf.gz" % vars(args))
 
     run_cmd("tabix indels.vcf.gz" % vars(args))
 
@@ -164,12 +166,10 @@ def main(args):
 
     run_cmd("bcftools index -f indels_num.vcf.gz")
 
-    run_cmd("SnpSift annotate %(clinVar)s indels_num.vcf.gz > indels.vcf.gz" % vars(args))
-
-    run_cmd("bcftools query indels.vcf.gz -f '[%SAMPLE\t%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%GT\t%TGT\t%DP\t%AD\t%INFO/BCSQ\t%RS\t%CLNDN\n]' > combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt")
-
-    run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt")
-
+    run_cmd("SnpSift annotate %(clinVar)s %(output_dir)s/indels_num.vcf.gz > %(output_dir)s/indels.vcf.gz" % vars(args))
+    run_cmd("bcftools query %(output_dir)s/indels.vcf.gz -f '[%SAMPLE\t%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%GT\t%TGT\t%DP\t%AD\t%INFO/BCSQ\t%RS\t%CLNDN\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt" % vars(args))
+    run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt" % vars(args))
+    
     # DEPTH EXTRACTION ACROSS AMPLICON POSITIONS
     bedlines = []
     amplicon_positions = []
@@ -209,6 +209,8 @@ parser.add_argument('--bed', type=str, help='BED file with amplicon or target re
 parser.add_argument('--threads', default=10, type=int, help='Threads for parallel processing')
 parser.add_argument('--min-base-qual', default=30, type=int, help='Minimum base quality for FreeBayes')
 parser.add_argument('--version', action='version', version='%(prog)s 1.0')
+parser.add_argument('--clinvar', type=str, help='ClinVar VCF file for annotation', required=True)
+parser.add_argument('--output-dir', type=str, default="output", help='Folder to save output files')
 parser.set_defaults(func=main)
 
 # ___ RUN MAIN ___

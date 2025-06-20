@@ -1,10 +1,20 @@
 import os
+import argparse
 import pandas as pd
 from glob import glob
 
-# Path to your folder of coverage files
-coverage_folder = "/mnt/storage13/ahri/human_genotyping"
-coverage_files = glob(os.path.join(coverage_folder, "*_coverage_mean.txt"))
+# Argument parser
+parser = argparse.ArgumentParser(description="Summarize amplicon coverage across samples")
+parser.add_argument("--input", required=True, help="Folder containing *_coverage_mean.txt files")
+parser.add_argument("--output", required=True, help="Folder to save output files")
+args = parser.parse_args()
+
+# Create output folder if it doesn't exist
+os.makedirs(args.output, exist_ok=True)
+
+# Get coverage files
+coverage_files = glob(os.path.join(args.input, "*_coverage_mean.txt"))
+
 # Filter out files where the sample name starts with 'NC'
 coverage_files = [
     f for f in coverage_files
@@ -29,7 +39,8 @@ combined_df = pd.concat(all_data)
 matrix_df = combined_df.pivot(index="AMPLICON", columns="SAMPLE", values="DEPTH")
 
 # Save matrix
-matrix_df.to_csv("amplicon_coverage_matrix.tsv", sep="\t")
+matrix_outfile = os.path.join(args.output, "amplicon_coverage_matrix.tsv")
+matrix_df.to_csv(matrix_outfile, sep="\t")
 
 # Binary success matrix: coverage > threshold (e.g., 10x)
 success_matrix = (matrix_df > 50).astype(int)
@@ -46,9 +57,10 @@ print("\nSample success %: % of amplicons within each sample which have coverage
 print(sample_success_rate)
 
 # Save summary to file
-with open("amplicon_coverage_matrix_summary.txt", "w") as f:
+summary_file = os.path.join(args.output, "amplicon_coverage_matrix_summary.txt")
+with open(summary_file, "w") as f:
     f.write("Amplicon success (% of samples with coverage ≥ 50x for each amplicon):\n")
     f.write(amplicon_success_rate.sort_index().to_string())
-    f.write("\n\nSample success (% of amplicons within each sample which have coverage ≥ 30x):\n")
+    f.write("\n\nSample success (% of amplicons within each sample which have coverage ≥ 50x):\n")
     f.write(sample_success_rate.sort_index().to_string())
 
