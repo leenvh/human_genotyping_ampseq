@@ -4,7 +4,12 @@ library(readr)
 library(dplyr)
 
 # Load data
-df <- read_tsv("/mnt/storage13/ahri/human_genotyping/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt", col_types = cols())
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) < 1) {
+  stop("Please provide the input file path as a command-line argument.")
+}
+input_file <- args[1]
+df <- read_tsv(input_file, col_types = cols())
 
 # Filter for rows with valid RS IDs
 df_filtered <- df %>%

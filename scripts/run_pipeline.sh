@@ -24,7 +24,7 @@ python demux_nanopore_plates_edgesize100.py \
 -b internal_barcodes.csv \
 -f /mnt/storage13/ahri/human_genotyping/rerun_nanopore_pipeline_out_exp181/fastq/fastq \
 -o samples.csv \
---demux-script /path/to/demux_nanopore_amplicon.py
+--demux-script /path/to/demux_nanopore_amplicon.py \
 -m 0 \
 -t 8
 
@@ -48,10 +48,13 @@ python mapping_variant_calling.py \
 # Add rs code for Dantu variant manually, as it is not included in the clinvar file
 awk -F'\t' 'BEGIN{OFS=FS} 
 $2=="4" && $3=="143781321" && $4=="A" && $5=="G" {$12="186873296"} 
-{print}' combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt
+{print}' path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt
+
+# Make coverage plots
+Rscript coverage_plots.R /path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt
 
 # Create amplicon coverage matrix
-python create_ampliconxsample_coverage_matrix.py --input /mnt/storage13/ahri/human_genotyping --output /mnt/storage13/ahri/human_genotyping/output
+python create_ampliconxsample_coverage_matrix.py --input /path/to/coverage_files --output /path/to/outputdir
 
 # Compute SNP allele frequencies
 python compute_SNP_allele_frequencies.py \
