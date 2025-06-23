@@ -1,8 +1,8 @@
 
 Workflow for analysis of nanopore amplicon sequencing data to genotype variants in the G6PD, HBB, and ACKR1 (Duffy) genes, as well as the Dantu variant.<br>
 
-Assay methods adapted from https://pubmed.ncbi.nlm.nih.gov/37495620/ <br>
-Scripts adapted from https://github.com/LSHTMPathogenSeqLab/amplicon-seq/tree/main and https://github.com/sophiemoss/smoss_ampseq/tree/main
+Lab assay methods adapted from https://pubmed.ncbi.nlm.nih.gov/37495620/ <br>
+Analysis scripts adapted from https://github.com/LSHTMPathogenSeqLab/amplicon-seq/tree/main and https://github.com/sophiemoss/smoss_ampseq/tree/main
 
 ## Workflow
 Follow [run_pipeline.sh](scripts/run_pipeline.sh)
