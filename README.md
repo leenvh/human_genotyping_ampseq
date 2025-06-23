@@ -14,6 +14,6 @@ Follow [run_pipeline.sh](scripts/run_pipeline.sh)
 - Plate layout example file: [plate_layout.csv](input_files/plate_layout.csv)
 - Reference genome (size too large for upload): download from https://www.ncbi.nlm.nih.gov/genome/guide/human or scp from /mnt/storage13/ahri/human_genotyping/github/input_files/GCF_000001405.40_GRCh38.p14_genomic.fna
 - gff file (size too large for upload): download from https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/ or scp from /mnt/storage13/ahri/human_genotyping/github/input_files/GCF_000001405.40_GRCh38.p14_genomic.gff
-- Clinvar file (size too large for upload): download via below commands or scp from /mnt/storage13/ahri/human_genotyping/github/input_files/clinvar_GRCh38.vcf.gz
+- Clinvar file (size too large for upload): download via the command below or scp from /mnt/storage13/ahri/human_genotyping/github/input_files/clinvar_GRCh38.vcf.gz
 <pre>curl -s ftp://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz > clinvar_GRCh38.vcf.gz
 tabix -f clinvar_GRCh38.vcf.gz<pre> 
