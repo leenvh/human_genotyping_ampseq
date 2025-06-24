@@ -56,6 +56,8 @@ python /path/to/compute_SNP_allele_frequencies.py \
   --snp-file path/to/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt \
   --coverage-matrix path/to/amplicon_coverage_matrix.tsv \
   --bed-file path/to/GRCh38_amplicon_targets_updated_sorted_num.bed \
-  --output path/to/snp_frequencies_filtered_by_coverage_and_altDP20.tsv
+  --output path/to/outputdir/snp_frequencies_filtered_by_coverage_and_altDP20.tsv
 
 
+# Filter combined.genotyped_filtered_FMTDP_30_formatted.snps.trans to exclude samples with ./. Or . In GT, and remove unassigned:
+awk -F'\t' 'NR==1 || ($1 != "unassigned" && $7 != "./." && $7 != ".")' path/to/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > path/to/outputdir/filtered_snps.txt
