@@ -5,10 +5,17 @@ library(dplyr)
 
 # Load data
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 1) {
-  stop("Please provide the input file path as a command-line argument.")
+if (length(args) < 2) {
+  stop("Please provide the input file path and output directory as command-line arguments.")
 }
 input_file <- args[1]
+output_dir <- args[2]
+
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+
 df <- read_tsv(input_file, col_types = cols())
 
 # Filter for rows with valid RS IDs
@@ -51,7 +58,7 @@ if (nrow(df_filtered) == 0) {
   df_filtered$RS <- factor(df_filtered$RS, levels = unique(df_filtered$RS))
   
   # Plot
-  ggplot(df_filtered, aes(x = RS, y = DP, fill = GENE)) +
+  p1<-ggplot(df_filtered, aes(x = RS, y = DP, fill = GENE)) +
     geom_boxplot() +
     labs(
       title = "Read Depth per rsID",
@@ -66,6 +73,8 @@ if (nrow(df_filtered) == 0) {
       axis.text.x = element_text(angle = 90, hjust = 1),
       panel.border = element_rect(color = "black", fill = NA, size = 1)
     )
+    # Save plot
+  ggsave(filename = file.path(output_dir, "snp_read_depth_boxplot.pdf"), plot = p1, width = 10, height = 6)
 }
 
 
@@ -99,7 +108,7 @@ if (nrow(NC) == 0) {
     arrange(CHROM, POS)
   
   # Plot
-  ggplot(NC, aes(x = SAMPLE, y = DP, fill = GENE)) +
+  p2<-ggplot(NC, aes(x = SAMPLE, y = DP, fill = GENE)) +
     geom_boxplot() +
     labs(
       title = "Read Depth per Negative control",
@@ -113,4 +122,8 @@ if (nrow(NC) == 0) {
       axis.text.x = element_text(angle = 90, hjust = 1),
       panel.border = element_rect(color = "black", fill = NA, size = 1)
     )
+  ggsave(filename = file.path(output_dir, "negative_control_read_depth_boxplot.pdf"), plot = p2, width = 10, height = 6)
 }
+
+# Clean up unwanted Rplots.pdf if created
+if (file.exists("Rplots.pdf")) file.remove("Rplots.pdf")

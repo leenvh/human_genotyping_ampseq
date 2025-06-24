@@ -81,23 +81,29 @@ def main(args):
     fm.create_seq_dict(args.ref)
     fm.faidx(args.ref)
     log(f"Reference indexing complete for: {args.ref}")
-    
-    # Alignment & Coverage per Sample
-    for sample in samples:
-        args.sample = sample
-        log(f"Starting alignment for sample: {sample}")
-        
-        # Minimap2 alignment + sort BAM
-        run_cmd("minimap2 -x map-ont --MD -t %(threads)s -R '@RG\\tID:%(sample)s\\tSM:%(sample)s\\tPL:nanopore' -a %(ref)s %(sample)s.fastq.gz | samtools sort -@ %(threads)s -o %(sample)s.bam -" % vars(args))
-        log(f"Finished alignment for sample: {sample}")
-        
-        # Index BAM + generate QC stats
-        run_cmd("samtools index %(sample)s.bam" % vars(args))
-        run_cmd("samtools flagstat %(sample)s.bam > %(sample)s.flagstat.txt" % vars(args))
-        
-        # Coverage stats
-        run_cmd("mosdepth -x -b %(bed)s %(sample)s --thresholds 1,10,20,30  %(sample)s.bam" % vars(args))
-        run_cmd("bedtools coverage -a %(bed)s -b %(sample)s.bam -mean > %(sample)s_coverage_mean.txt" % vars(args))
+    # Check if all *_coverage_mean.txt files already exist
+    coverage_files_present = all(os.path.exists(f"{sample}_coverage_mean.txt") for sample in samples)
+
+    if coverage_files_present:
+        log("All *_coverage_mean.txt files are present. Skipping alignment and coverage calculation steps.")
+    else:
+        # Alignment & Coverage per Sample
+        for sample in samples:
+            args.sample = sample
+            log(f"Starting alignment for sample: {sample}")
+
+            # Minimap2 alignment + sort BAM
+            run_cmd("minimap2 -x map-ont --MD -t %(threads)s -R '@RG\\tID:%(sample)s\\tSM:%(sample)s\\tPL:nanopore' -a %(ref)s %(sample)s.fastq.gz | samtools sort -@ %(threads)s -o %(sample)s.bam -" % vars(args))
+            log(f"Finished alignment for sample: {sample}")
+
+            # Index BAM + generate QC stats
+            run_cmd("samtools index %(sample)s.bam" % vars(args))
+            run_cmd("samtools flagstat %(sample)s.bam > %(sample)s.flagstat.txt" % vars(args))
+
+            # Coverage stats
+            run_cmd("mosdepth -x -b %(bed)s %(sample)s --thresholds 1,10,20,30  %(sample)s.bam" % vars(args))
+            run_cmd("bedtools coverage -a %(bed)s -b %(sample)s.bam -mean > %(sample)s_coverage_mean.txt" % vars(args))
+
         
     # Write BAM file list as bam_list.txt for the joint genotyping
     with open("bam_list.txt", "w") as O:
@@ -125,51 +131,53 @@ def main(args):
     # SNP ANNOTATION + EXPORT
     run_cmd("bcftools view --threads %(threads)s -v snps combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o %(output_dir)s/snps.vcf.gz" % vars(args))
 
-    run_cmd("tabix -f snps.vcf.gz" % vars(args))
+    # Index SNP VCF
+    run_cmd("tabix -f %(output_dir)s/snps.vcf.gz" % vars(args))
 
+    # Rename chromosomes
     run_cmd(textwrap.dedent(r"""
-    zcat snps.vcf.gz | \
+    zcat %(output_dir)s/snps.vcf.gz | \
     awk '{gsub(/NC_000001.11/, "1");  \
           gsub(/NC_000004.12/, "4");  \
           gsub(/NC_000011.10/, "11"); \
           gsub(/NC_000023.11/, "X");  \
           print;}' \
-    > snps_num.vcf
-    """))
+    > %(output_dir)s/snps_num.vcf
+    """ % vars(args)))
 
-    run_cmd("bgzip -c snps_num.vcf > snps_num.vcf.gz")
+    run_cmd("bgzip -c %(output_dir)s/snps_num.vcf > %(output_dir)s/snps_num.vcf.gz" % vars(args))
+    run_cmd("bcftools index -f %(output_dir)s/snps_num.vcf.gz" % vars(args))
 
-    run_cmd("bcftools index -f snps_num.vcf.gz")
-
-    run_cmd("SnpSift annotate %(clinVar)s %(output_dir)s/snps_num.vcf.gz > %(output_dir)s/snps.vcf.gz" % vars(args))
-    run_cmd("bcftools query %(output_dir)s/snps.vcf.gz -f '[%SAMPLE\t%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%GT\t%TGT\t%DP\t%AD\t%INFO/BCSQ\t%RS\t%CLNDN\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
+    run_cmd("SnpSift annotate %(clinvar)s %(output_dir)s/snps_num.vcf.gz > %(output_dir)s/snps_annotated.vcf" % vars(args))
+    run_cmd("bcftools query %(output_dir)s/snps_annotated.vcf -f '[%%SAMPLE\\t%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%QUAL\\t%%GT\\t%%TGT\\t%%DP\\t%%AD\\t%%INFO/BCSQ\\t%%RS\\t%%CLNDN\\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
     run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
-    
-    run_cmd("awk -F'\t' 'BEGIN{OFS=FS} $2==\"4\" && $3==\"143781321\" && $4==\"A\" && $5==\"G\" {$12=\"186873296\"} {print}' combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt")
+
+    # Fix RS ID for specific SNP
+    run_cmd("awk -F'\t' 'BEGIN{OFS=FS} $2==\"4\" && $3==\"143781321\" && $4==\"A\" && $5==\"G\" {$12=\"186873296\"} {print}' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
 
     # INDEL ANNOTATION + EXPORT
     run_cmd("bcftools view --threads %(threads)s -v indels combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o %(output_dir)s/indels.vcf.gz" % vars(args))
 
-    run_cmd("tabix indels.vcf.gz" % vars(args))
+    run_cmd("tabix %(output_dir)s/indels.vcf.gz" % vars(args))
 
     run_cmd(textwrap.dedent(r"""
-    zcat indels.vcf.gz | \
+    zcat %(output_dir)s/indels.vcf.gz | \
     awk '{gsub(/NC_000001.11/, "1");  \
           gsub(/NC_000004.12/, "4");  \
           gsub(/NC_000011.10/, "11"); \
           gsub(/NC_000023.11/, "X");  \
           print;}' \
-    > indels_num.vcf
-    """))
+    > %(output_dir)s/indels_num.vcf
+    """ % vars(args)))
 
-    run_cmd("bgzip -c indels_num.vcf > indels_num.vcf.gz")
+    run_cmd("bgzip -c %(output_dir)s/indels_num.vcf > %(output_dir)s/indels_num.vcf.gz" % vars(args))
 
-    run_cmd("bcftools index -f indels_num.vcf.gz")
+    run_cmd("bcftools index -f %(output_dir)s/indels_num.vcf.gz" % vars(args))
 
-    run_cmd("SnpSift annotate %(clinVar)s %(output_dir)s/indels_num.vcf.gz > %(output_dir)s/indels.vcf.gz" % vars(args))
-    run_cmd("bcftools query %(output_dir)s/indels.vcf.gz -f '[%SAMPLE\t%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%GT\t%TGT\t%DP\t%AD\t%INFO/BCSQ\t%RS\t%CLNDN\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt" % vars(args))
+    run_cmd("SnpSift annotate %(clinvar)s %(output_dir)s/indels_num.vcf.gz > %(output_dir)s/indels_annotated.vcf" % vars(args))
+    run_cmd("bcftools query %(output_dir)s/indels_annotated.vcf -f '[%%SAMPLE\\t%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%QUAL\\t%%GT\\t%%TGT\\t%%DP\\t%%AD\\t%%INFO/BCSQ\\t%%RS\\t%%CLNDN\\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt" % vars(args))
     run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.indels.trans.txt" % vars(args))
-    
+   
     # DEPTH EXTRACTION ACROSS AMPLICON POSITIONS
     bedlines = []
     amplicon_positions = []

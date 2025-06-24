@@ -19,7 +19,7 @@ dorado --sample_sheet /mnt/storageG1/data/experiments/exp181_humanamplicons_AHRI
 # Demultiplexing by plate barcodes (barcodes included in the primers, e.g. BC1-BC11 etc)
 conda activate fastq2matrix
 
-python demux_nanopore_plates_edgesize100.py \
+python /path/to/demux_nanopore_plates_edgesize100.py \
 -p plate_layout.csv \
 -b internal_barcodes.csv \
 -f /mnt/storage13/ahri/human_genotyping/rerun_nanopore_pipeline_out_exp181/fastq/fastq \
@@ -35,7 +35,7 @@ echo -e "sample" | cat - samples.txt > samples_header.txt
 sed 's/ \+/,/g' samples_header.txt > sample_file.csv
 
 # Mapping and variant calling
-python mapping_variant_calling.py \
+python /path/to/mapping_variant_calling.py \
 --index-file /path/to/sample_file.csv \
 --ref /path/to/GCF_000001405.40_GRCh38.p14_genomic.fna \
 --gff /path/to/GCF_000001405.40_GRCh38.p14_genomic.gff \
@@ -45,19 +45,14 @@ python mapping_variant_calling.py \
 --min-base-qual 30 \
 --threads 40
 
-# Add rs code for Dantu variant manually, as it is not included in the clinvar file
-awk -F'\t' 'BEGIN{OFS=FS} 
-$2=="4" && $3=="143781321" && $4=="A" && $5=="G" {$12="186873296"} 
-{print}' path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt
-
 # Make coverage plots
-Rscript coverage_plots.R /path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt
+Rscript /path/to/coverage_plots.R /path/to/outputdir/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt /path/to/outputdir/
 
 # Create amplicon coverage matrix
-python create_ampliconxsample_coverage_matrix.py --input /path/to/coverage_files --output /path/to/outputdir
+python /path/to/create_ampliconxsample_coverage_matrix.py --input /path/to/coverage_files --output /path/to/outputdir
 
 # Compute SNP allele frequencies
-python compute_SNP_allele_frequencies.py \
+python /path/to/compute_SNP_allele_frequencies.py \
   --snp-file path/to/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt \
   --coverage-matrix path/to/amplicon_coverage_matrix.tsv \
   --bed-file path/to/GRCh38_amplicon_targets_updated_sorted_num.bed \
