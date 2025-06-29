@@ -11,7 +11,7 @@ Edits from the original script include removing samclip as this got rid of ampli
 changing to minimap2 for mapping as this is faster, and allowing freebayes to do gvcf chunking.
 
 EXAMPLE USAGE:
-    python sophie_nanopore_amplicon_script_minimap2.py \
+    python mapping_variant_calling.py \
     --index-file sample_file.csv \
     --ref GCF_000001405.40_GRCh38.p14_genomic.fna \
     --gff GCF_000001405.40_GRCh38.p14_genomic.gff \
@@ -26,6 +26,8 @@ REQUIRED ARGUMENTS:
     --ref               Reference FASTA file (indexed with faidx, make sure no .dict file already exists in the folder)
     --gff               GFF annotation file for consequence prediction
     --bed               BED file with target amplicon regions
+    --clinvar           file with ClinVar annotations
+    --output-dir        directory to write output files
 
 OPTIONAL ARGUMENTS:
     --threads           Number of threads to use (default: 10)
@@ -81,11 +83,15 @@ def main(args):
     fm.create_seq_dict(args.ref)
     fm.faidx(args.ref)
     log(f"Reference indexing complete for: {args.ref}")
-    # Check if all *_coverage_mean.txt files already exist
-    coverage_files_present = all(os.path.exists(f"{sample}_coverage_mean.txt") for sample in samples)
+
+    # ---------------------------
+    # 1. Alignment + Coverage
+    # ---------------------------
+    # Check if all *_coverage.txt files already exist
+    coverage_files_present = all(os.path.exists(f"{sample}.coverage.txt") for sample in samples)
 
     if coverage_files_present:
-        log("All *_coverage_mean.txt files are present. Skipping alignment and coverage calculation steps.")
+        log("All *coverage.txt files are present. Skipping alignment and coverage calculation steps.")
     else:
         # Alignment & Coverage per Sample
         for sample in samples:
@@ -103,8 +109,15 @@ def main(args):
             # Coverage stats
             run_cmd("mosdepth -x -b %(bed)s %(sample)s --thresholds 1,10,20,30  %(sample)s.bam" % vars(args))
             run_cmd("bedtools coverage -a %(bed)s -b %(sample)s.bam -mean > %(sample)s_coverage_mean.txt" % vars(args))
+            run_cmd("sambamba depth base %(sample)s.bam | " 
+            "awk 'BEGIN{OFS=FS=\"\\t\"} NR==1 {print} NR>1 {$2=$2+1; print}' > %(sample)s.coverage.txt" % vars(args)
+            )
 
-        
+
+    
+    # ---------------------------
+    # 2. Variant calling
+    # ---------------------------       
     # Write BAM file list as bam_list.txt for the joint genotyping
     with open("bam_list.txt", "w") as O:
         for s in samples:
@@ -128,12 +141,18 @@ def main(args):
             "bcftools view --threads %(threads)s -i 'QUAL>30' | bcftools sort | bcftools norm -m - -Oz -o combined.genotyped_filtered_FMTDP_30.vcf.gz" % vars(args))
     log(f"Finished filtering for FMT/DP>30")
 
+    # ---------------------------
+    # 3. Functional annotation on VCF
+    # ---------------------------
     # SNP ANNOTATION + EXPORT
     run_cmd("bcftools view --threads %(threads)s -v snps combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o %(output_dir)s/snps.vcf.gz" % vars(args))
 
     # Index SNP VCF
     run_cmd("tabix -f %(output_dir)s/snps.vcf.gz" % vars(args))
 
+    # ---------------------------
+    # 4. Chromosome renaming for clinvar annotation
+    # ---------------------------
     # Rename chromosomes
     run_cmd(textwrap.dedent(r"""
     zcat %(output_dir)s/snps.vcf.gz | \
@@ -148,6 +167,9 @@ def main(args):
     run_cmd("bgzip -c %(output_dir)s/snps_num.vcf > %(output_dir)s/snps_num.vcf.gz" % vars(args))
     run_cmd("bcftools index -f %(output_dir)s/snps_num.vcf.gz" % vars(args))
 
+    # ---------------------------
+    # 5. ClinVar annotation & tabulation
+    # ---------------------------
     run_cmd("SnpSift annotate %(clinvar)s %(output_dir)s/snps_num.vcf.gz > %(output_dir)s/snps_annotated.vcf" % vars(args))
     run_cmd("bcftools query %(output_dir)s/snps_annotated.vcf -f '[%%SAMPLE\\t%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%QUAL\\t%%GT\\t%%TGT\\t%%DP\\t%%AD\\t%%INFO/BCSQ\\t%%RS\\t%%CLNDN\\n]' > %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
     run_cmd("sed -i '1iSAMPLE\tCHROM\tPOS\tREF\tALT\tQUAL\tGT\tTGT\tDP\tAD\tBCSQ\tRS\tCLNDN' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
@@ -155,6 +177,75 @@ def main(args):
     # Fix RS ID for specific SNP
     run_cmd("awk -F'\t' 'BEGIN{OFS=FS} $2==\"4\" && $3==\"143781321\" && $4==\"A\" && $5==\"G\" {$12=\"186873296\"} {print}' %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > tmp && mv tmp %(output_dir)s/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt" % vars(args))
 
+    # List of rs IDs to report 
+    rs_ids_to_report = [
+    "2230036", "76723693", "137852327", "137852328",
+    "5986875", "5030872", "1050829", "1050828",
+    "33915217", "35578002", "33950507", "33972047",
+    "35382661", "334", "33930165", "713040",
+    "386134236", "2814778", "186873296","2814778",
+    "72561473", "782754619", "137852313", "782669677", "1050829"
+    ]
+
+    formatted_file = os.path.join(args.output_dir, "combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt")
+    reported_rs_ids = set(rs_ids_to_report)
+
+    # Read all RS IDs from the file (column 12, index 11)
+    found_rs_ids = set()
+    with open(formatted_file) as f:
+        next(f)  # skip header
+        for line in f:
+            cols = line.strip().split("\t")
+            if len(cols) >= 12:
+                rsid = cols[11]
+                if rsid.startswith("rs"):
+                    rsid = rsid[2:]
+                found_rs_ids.add(rsid)
+
+    # Determine missing RS IDs
+    missing_rs_ids = sorted(reported_rs_ids - found_rs_ids)
+
+    if missing_rs_ids:
+        log(f"Missing RS IDs ({len(missing_rs_ids)}): {', '.join(missing_rs_ids)}")
+
+        # Write to file in output directory
+        missing_path = os.path.join(args.output_dir, "missing_rs_ids.txt")
+        with open(missing_path, "w") as out_f:
+            out_f.write("")
+            for rsid in missing_rs_ids:
+                out_f.write(f"{rsid}\n")
+
+        log(f"Missing RS IDs written to {missing_path}")
+    else:
+        log("All RS IDs from rs_ids_to_report were found.")
+
+    # Extract CHROM and POS for missing RS IDs from ClinVar
+    log("Extracting chromosome and position of missing RS IDs from ClinVar VCF...")
+    clinvar_info_path = os.path.join(args.output_dir, "missing_rs_ids_clinvar_positions.txt")
+
+    with open(clinvar_info_path, "w") as out_f:
+        out_f.write("RS_ID\tCHROM\tPOS\n")
+        for rsid in missing_rs_ids:
+            query_id = f'"{rsid}"'
+            cmd = f"bcftools query -i 'INFO/RS={query_id}' -f '%CHROM\\t%POS\\n' {args.clinvar}"
+            try:
+                result = sp.check_output(cmd, shell=True, text=True).strip()
+                lines = result.splitlines()
+                if lines:
+                    for line in lines:
+                        if "\t" in line:
+                            chrom, pos = line.split("\t")
+                            out_f.write(f"{rsid}\t{chrom}\t{pos}\n")
+                else:
+                    out_f.write(f"{rsid}\tNOT_FOUND\tNOT_FOUND\n")
+            except sp.CalledProcessError:
+                out_f.write(f"{rsid}\tERROR\tERROR\n")
+
+    log(f"ClinVar positions written to {clinvar_info_path}")
+        
+    # ---------------------------
+    # 6. Indels (optional)
+    # ---------------------------
     # INDEL ANNOTATION + EXPORT
     run_cmd("bcftools view --threads %(threads)s -v indels combined.genotyped_filtered_FMTDP_30.vcf.gz | bcftools csq -p a -f %(ref)s -g %(gff)s -Oz -o %(output_dir)s/indels.vcf.gz" % vars(args))
 
@@ -224,4 +315,3 @@ parser.set_defaults(func=main)
 # ___ RUN MAIN ___
 args = parser.parse_args()
 args.func(args)
-
