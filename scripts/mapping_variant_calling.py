@@ -220,26 +220,30 @@ def main(args):
         log("All RS IDs from rs_ids_to_report were found.")
 
     # Extract CHROM and POS for missing RS IDs from ClinVar
-    log("Extracting chromosome and position of missing RS IDs from ClinVar VCF...")
+    log("Extracting chromosome, position, ref, alt and gene info of missing RS IDs from ClinVar VCF...")
     clinvar_info_path = os.path.join(args.output_dir, "missing_rs_ids_clinvar_positions.txt")
 
     with open(clinvar_info_path, "w") as out_f:
-        out_f.write("RS_ID\tCHROM\tPOS\n")
+        out_f.write("RS_ID\tCHROM\tPOS\tREF\tALT\tGENEINFO\n")
         for rsid in missing_rs_ids:
             query_id = f'"{rsid}"'
-            cmd = f"bcftools query -i 'INFO/RS={query_id}' -f '%CHROM\\t%POS\\n' {args.clinvar}"
+            # Extract CHROM, POS, REF, ALT, GENEINFO from ClinVar VCF
+            cmd = (
+                f"bcftools query -i 'INFO/RS={query_id}' "
+                f"-f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/GENEINFO\\n' {args.clinvar}"
+            )
             try:
                 result = sp.check_output(cmd, shell=True, text=True).strip()
                 lines = result.splitlines()
                 if lines:
                     for line in lines:
                         if "\t" in line:
-                            chrom, pos = line.split("\t")
-                            out_f.write(f"{rsid}\t{chrom}\t{pos}\n")
+                            out_f.write(f"{rsid}\t{line}\n")
                 else:
-                    out_f.write(f"{rsid}\tNOT_FOUND\tNOT_FOUND\n")
+                    out_f.write(f"{rsid}\tNOT_FOUND\tNOT_FOUND\tNOT_FOUND\tNOT_FOUND\tNOT_FOUND\n")
             except sp.CalledProcessError:
-                out_f.write(f"{rsid}\tERROR\tERROR\n")
+                out_f.write(f"{rsid}\tERROR\tERROR\tERROR\tERROR\tERROR\n")
+
 
     log(f"ClinVar positions written to {clinvar_info_path}")
         
