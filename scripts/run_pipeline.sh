@@ -61,3 +61,26 @@ python /path/to/compute_SNP_allele_frequencies.py \
 
 # Filter combined.genotyped_filtered_FMTDP_30_formatted.snps.trans to exclude samples with ./. Or . In GT, and remove unassigned:
 awk -F'\t' 'NR==1 || ($1 != "unassigned" && $7 != "./." && $7 != ".")' path/to/combined.genotyped_filtered_FMTDP_30_formatted.snps.trans.txt > path/to/outputdir/filtered_snps.txt
+
+
+# Extract coverage files for rsIDs that are missing from data
+python /path/to/extract_missing_rs_coverage_by_sample.py \
+  --positions path/to/missing_rs_ids_clinvar_positions.txt \
+  --coverage-dir path/to/*.coverage.txt files \
+  --output-dir path/to/outputdir
+
+
+# Make snp summary files including missing rsIDS and per district
+python /path/to/parse.py \
+  --filtered-snps /path/to/filtered_snps.txt \
+  --missing-rs /path/to/missing_rs_ids_clinvar_positions.txt \
+  --coverage-dir /path/to/rs*.txt coverage files \
+  --metadata /path/to/metadata.csv \
+  --output-dir /path/to/outputdir
+
+# Make pie chart figures
+Rscript /path/to/piecharts.R \
+  path/to/snp_summary_ackr1_dantu_hbb.txt \
+  path/to/snp_summary_g6pd.txt \
+  path/to/snp_genotype_pies_ackr1_dantu_hbb.pdf \
+  path/to/snp_genotype_pies_g6pd.pdf
